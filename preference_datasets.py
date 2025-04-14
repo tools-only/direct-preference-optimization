@@ -42,6 +42,147 @@ def strip_html_tags(html_string):
 
     return text
 
+def get_weighted_pp(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Personalized Preference dataset, and return a dict of prompts and responses.
+    """
+    print(f'Loading PP dataset ({split} split) from Huggingface...')
+    dataset = datasets.load_dataset('tools-o/weight-prefer', cache_dir=cache_dir)['train']
+    print('done')
+
+    target = "gpt-4o-mini_role_2"
+    # shuffle the dataset and select 1% for test
+    dataset = dataset.shuffle(seed=42)
+    dataset = dataset.select(range(int(len(dataset) * 0.2))) if split == 'test' else dataset.select(
+        range(int(len(dataset) * 0.2), len(dataset)))
+
+    data = defaultdict(dict)
+    for row in tqdm.tqdm(dataset, desc='Processing SE', disable=silent):
+        prompt = '\n\nHuman: ' + row['Question'] + '\n\nAssistant:'
+        responses = ['A', 'B', 'C']
+
+        remaining = [0, 1, 2]  # 所有可能的数字
+        if 'A.' in row[target] or 'A' == row[target]:
+            pairs = [(0, 1), (0, 2)]
+            remaining.remove(0)  # 移除已使用的数字
+            # 剩下的数字是 [1, 2]，随机排列
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))  # 例如 (1, 2) 或 (2, 1)
+            sft = 'A'
+        elif 'B.' in row[target] or 'B' == row[target]:
+            pairs = [(1, 0), (1, 2)]
+            remaining.remove(1)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'B'
+        elif 'C.' in row[target] or 'C' == row[target]:
+            pairs = [(2, 0), (2, 1)]
+            remaining.remove(2)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'C'
+        else:
+            pairs = []  # 默认情况（可自定义）
+
+        data[prompt]['responses'] = responses
+        data[prompt]['pairs'] = pairs
+        data[prompt]['sft_target'] = sft
+        data[prompt]['weight'] = row['weight']
+
+    return data
+
+def get_pp_all(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Personalized Preference dataset, and return a dict of prompts and responses.
+    """
+    print(f'Loading PP dataset ({split} split) from Huggingface...')
+    dataset = datasets.load_dataset('tools-o/pp_all', cache_dir=cache_dir)['train']
+    print('done')
+
+    target = "gpt-4o-mini_role_2"
+    # shuffle the dataset and select 1% for test
+    dataset = dataset.shuffle(seed=42)
+    dataset = dataset.select(range(int(len(dataset) * 0.2))) if split == 'test' else dataset.select(
+        range(int(len(dataset) * 0.2), len(dataset)))
+
+    data = defaultdict(dict)
+    for row in tqdm.tqdm(dataset, desc='Processing SE', disable=silent):
+        prompt = '\n\nHuman: ' + row['Question'] + '\n\nAssistant:'
+        responses = ['A', 'B', 'C']
+
+        remaining = [0, 1, 2]  # 所有可能的数字
+        if 'A.' in row[target] or 'A' == row[target]:
+            pairs = [(0, 1), (0, 2)]
+            remaining.remove(0)  # 移除已使用的数字
+            # 剩下的数字是 [1, 2]，随机排列
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))  # 例如 (1, 2) 或 (2, 1)
+            sft = 'A'
+        elif 'B.' in row[target] or 'B' == row[target]:
+            pairs = [(1, 0), (1, 2)]
+            remaining.remove(1)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'B'
+        elif 'C.' in row[target] or 'C' == row[target]:
+            pairs = [(2, 0), (2, 1)]
+            remaining.remove(2)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'C'
+        else:
+            pairs = []  # 默认情况（可自定义）
+
+        data[prompt]['responses'] = responses
+        data[prompt]['pairs'] = pairs
+        data[prompt]['sft_target'] = sft
+
+    return data
+
+def get_pp(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Personalized Preference dataset, and return a dict of prompts and responses.
+    """
+    print(f'Loading PP dataset ({split} split) from Huggingface...')
+    dataset = datasets.load_dataset('tools-o/same_unique', cache_dir=cache_dir)['train']
+    print('done')
+
+    target = "gpt-4o-mini_role_2_answer"
+    # shuffle the dataset and select 1% for test
+    dataset = dataset.shuffle(seed=42)
+    dataset = dataset.select(range(int(len(dataset) * 0.2))) if split == 'test' else dataset.select(
+        range(int(len(dataset) * 0.2), len(dataset)))
+
+    data = defaultdict(dict)
+    for row in tqdm.tqdm(dataset, desc='Processing SE', disable=silent):
+        prompt = '\n\nHuman: ' + row['Question'] + '\n\nAssistant:'
+        responses = ['A', 'B', 'C']
+
+        remaining = [0, 1, 2]  # 所有可能的数字
+        if row[target] == 0:
+            pairs = [(0, 1), (0, 2)]
+            remaining.remove(0)  # 移除已使用的数字
+            # 剩下的数字是 [1, 2]，随机排列
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))  # 例如 (1, 2) 或 (2, 1)
+            sft = 'A'
+        elif row[target] == 1:
+            pairs = [(1, 0), (1, 2)]
+            remaining.remove(1)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'B'
+        elif row[target] == 2:
+            pairs = [(2, 0), (2, 1)]
+            remaining.remove(2)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'C'
+        else:
+            pairs = []  # 默认情况（可自定义）
+
+        data[prompt]['responses'] = responses
+        data[prompt]['pairs'] = pairs
+        data[prompt]['sft_target'] = sft
+
+    return data
 
 def get_se(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
     """Load the StackExchange dataset from Huggingface, and return a dict of prompts and responses. See get_hh for the format.
@@ -168,10 +309,16 @@ def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = No
         data = get_hh(split, silent=silent, cache_dir=cache_dir)
     elif name == 'se':
         data = get_se(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'pp':
+        data = get_pp(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'pp_all':
+        data = get_pp_all(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'weight_pp':
+        data = get_weighted_pp(split, silent=silent, cache_dir=cache_dir)
     else:
         raise ValueError(f"Unknown dataset '{name}'")
 
-    assert set(list(data.values())[0].keys()) == {'responses', 'pairs', 'sft_target'}, \
+    assert set(list(data.values())[0].keys()) == {'responses', 'pairs', 'sft_target', 'weight'}, \
         f"Unexpected keys in dataset: {list(list(data.values())[0].keys())}"
 
     return data
@@ -211,7 +358,7 @@ def get_collate_fn(tokenizer) -> Callable[[List[Dict]], Dict[str, Union[List, to
     return collate_fn
 
 
-def tokenize_batch_element(prompt: str, chosen: str, rejected: str, truncation_mode: str, tokenizer, max_length: int, max_prompt_length: int) -> Dict:
+def tokenize_batch_element(prompt: str, chosen: str, rejected: str, truncation_mode: str, tokenizer, max_length: int, max_prompt_length: int, weight: int = 1) -> Dict:
     """Tokenize a single batch element.
     
        At this stage, we don't convert to PyTorch tensors yet; we just handle the truncation
@@ -267,6 +414,7 @@ def tokenize_batch_element(prompt: str, chosen: str, rejected: str, truncation_m
     batch['rejected'] = prompt + rejected
     batch['chosen_response_only'] = chosen
     batch['rejected_response_only'] = rejected
+    batch['weight'] = weight
 
     for k, toks in {'chosen': chosen_sequence_tokens, 'rejected': rejected_sequence_tokens, 'prompt': prompt_tokens}.items():
         for type_key, tokens in toks.items():
@@ -317,8 +465,12 @@ def get_batch_iterator(names: List[str],
         flat_data = []
         for name in names:
             truncation_mode = 'keep_end' if name == 'hh' else 'keep_start'
-            for prompt, data in get_dataset(name, split, silent=silent, cache_dir=cache_dir).items():
-                flat_data.append((prompt, data['responses'], data['pairs'], data['sft_target'], truncation_mode))
+            if name == 'weight_pp':
+                for prompt, data in get_dataset(name, split, silent=silent, cache_dir=cache_dir).items():
+                    flat_data.append((prompt, data['responses'], data['pairs'], data['sft_target'], data['weight'], truncation_mode))
+            else:
+                for prompt, data in get_dataset(name, split, silent=silent, cache_dir=cache_dir).items():
+                    flat_data.append((prompt, data['responses'], data['pairs'], data['sft_target'], 1, truncation_mode))
 
     collate_fn = get_collate_fn(tokenizer)
 
@@ -335,7 +487,7 @@ def get_batch_iterator(names: List[str],
                 random.shuffle(flat_data)
 
         batch = []
-        for prompt, responses, pairs, sft_target, truncation_mode in flat_data:
+        for prompt, responses, pairs, sft_target, weight, truncation_mode in flat_data:
             if done:
                 break
             if sft_mode:
@@ -355,7 +507,7 @@ def get_batch_iterator(names: List[str],
                 for p in pairs:
                     if done:
                         break
-                    batch_element = tokenize_batch_element(prompt, responses[p[0]], responses[p[1]], truncation_mode, tokenizer, max_length, max_prompt_length)
+                    batch_element = tokenize_batch_element(prompt, responses[p[0]], responses[p[1]], truncation_mode, tokenizer, max_length, max_prompt_length, weight)
                     batch.append(batch_element)
                     example_idx += 1
                     if len(batch) == batch_size:

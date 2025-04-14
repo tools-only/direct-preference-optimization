@@ -226,12 +226,12 @@ class BasicTrainer(object):
         metrics = {}
         train_test = 'train' if train else 'eval'
 
-        if loss_config.name in {'dpo', 'ipo'}:
+        if loss_config.name in {'dpo', 'ipo', 'wdpo'}:
             policy_chosen_logps, policy_rejected_logps = self.concatenated_forward(self.policy, batch)
             with torch.no_grad():
                 reference_chosen_logps, reference_rejected_logps = self.concatenated_forward(self.reference_model, batch)
 
-            if loss_config.name == 'dpo':
+            if loss_config.name == 'dpo' or loss_config.name == 'wdpo':
                 loss_kwargs = {'beta': loss_config.beta, 'reference_free': loss_config.reference_free, 'label_smoothing': loss_config.label_smoothing, 'ipo': False}
             elif loss_config.name == 'ipo':
                 loss_kwargs = {'beta': loss_config.beta, 'ipo': True}
@@ -267,7 +267,34 @@ class BasicTrainer(object):
         all_devices_losses = all_gather_if_needed(losses.detach(), self.rank, self.world_size)
         metrics[f'loss/{train_test}'] = all_devices_losses.cpu().numpy().tolist()
 
-        return losses.mean(), metrics
+        if loss_config.name == 'wdpo':
+            weight = batch['weight']  # weight is a list
+
+            # Convert weight to a PyTorch tensor
+            weight_tensor = torch.tensor(weight).to(losses.device) #Match dtype for compatibility
+
+            #Check if weight and losses are compatible
+            if len(weight) != losses.shape[0]: #Assuming losses is 1D or 2D and weight is 1D
+                raise ValueError("Length of weight list must match the first dimension of losses tensor.")
+            if weight_tensor.shape != losses.shape:
+                raise ValueError("Shapes of weight tensor and losses tensor must match for weighted averaging.")
+            if torch.any(weight_tensor < 0):
+                raise ValueError("Weights must be non-negative.")
+            if torch.sum(weight_tensor) == 0:
+                raise ValueError("Sum of weights must be greater than zero.")
+
+            # Calculate sums on GPU
+            weighted_losses_sum = torch.sum(losses * weight_tensor)
+            weight_sum = torch.sum(weight_tensor)
+            print("before: ", losses.mean())
+            # Perform division on the GPU
+            losses = weighted_losses_sum / weight_sum
+            print("after: ", losses.mean())
+
+        else:
+            losses = losses.mean()
+
+        return losses, metrics
 
     def train(self):
         """Begin either SFT or DPO training, with periodic evaluation."""
@@ -275,17 +302,26 @@ class BasicTrainer(object):
         rank0_print(f'Using {self.config.optimizer} optimizer')
         self.optimizer = getattr(torch.optim, self.config.optimizer)(self.policy.parameters(), lr=self.config.lr)
         self.scheduler = torch.optim.lr_scheduler.LambdaLR(self.optimizer, lr_lambda=lambda step: min(1.0, (step + 1) / (self.config.warmup_steps + 1)))
-    
+
         torch.manual_seed(self.seed)
         np.random.seed(self.seed)
         random.seed(self.seed)
 
-        if self.config.loss.name in {'dpo', 'ipo'}:
+        if self.config.loss.name in {'dpo', 'ipo', 'wdpo'}:
             self.reference_model.eval()
 
         self.example_counter = 0
         self.batch_counter = 0
         last_log = None
+
+        # updated by zq, 25/4/14
+        if self.config.loss.name == 'sft':
+            policy_state_dict = self.policy.state_dict()
+            output_dir = os.path.join(self.run_dir, f'step-0')
+            self.write_state_dict(self.example_counter, policy_state_dict, None, 'policy.pt', output_dir)
+            del policy_state_dict
+
+            return
 
         for batch in self.train_iterator:
             #### BEGIN EVALUATION ####
@@ -297,7 +333,7 @@ class BasicTrainer(object):
                 if self.config.sample_during_eval:
                     all_policy_samples, all_reference_samples = [], []
                     policy_text_table = wandb.Table(columns=["step", "prompt", "sample"])
-                    if self.config.loss.name in {'dpo', 'ipo'}:
+                    if self.config.loss.name in {'dpo', 'ipo', 'wdpo'}:
                         reference_text_table = wandb.Table(columns=["step", "prompt", "sample"])
 
                 for eval_batch in (tqdm.tqdm(self.eval_batches, desc='Computing eval metrics') if self.rank == 0 else self.eval_batches):
@@ -324,7 +360,7 @@ class BasicTrainer(object):
 
                         for prompt, sample in zip(eval_batch['prompt'], policy_samples):
                             policy_text_table.add_data(self.example_counter, prompt, sample)
-                        if self.config.loss.name in {'dpo', 'ipo'}:
+                        if self.config.loss.name in {'dpo', 'ipo', 'wdpo'}:
                             for prompt, sample in zip(eval_batch['prompt'], reference_samples):
                                 reference_text_table.add_data(self.example_counter, prompt, sample)
 
