@@ -151,6 +151,7 @@ class BasicTrainer(object):
         """
         self.seed = seed
         self.rank = rank
+        self.gpu = rank
         self.world_size = world_size
         self.config = config
         self.run_dir = run_dir
@@ -337,7 +338,7 @@ class BasicTrainer(object):
                         reference_text_table = wandb.Table(columns=["step", "prompt", "sample"])
 
                 for eval_batch in (tqdm.tqdm(self.eval_batches, desc='Computing eval metrics') if self.rank == 0 else self.eval_batches):
-                    local_eval_batch = slice_and_move_batch_for_device(eval_batch, self.rank, self.world_size, self.rank)
+                    local_eval_batch = slice_and_move_batch_for_device(eval_batch, self.rank, self.world_size, self.gpu)
                     with torch.no_grad():
                         _, eval_metrics = self.get_batch_metrics(local_eval_batch, self.config.loss, train=False)
 
@@ -352,7 +353,7 @@ class BasicTrainer(object):
                         n_sample_batches = self.config.n_eval_model_samples // self.config.eval_batch_size
                         sample_batches = self.eval_batches[:n_sample_batches]
                     for eval_batch in (tqdm.tqdm(sample_batches, desc='Generating samples...') if self.rank == 0 else sample_batches):
-                        local_eval_batch = slice_and_move_batch_for_device(eval_batch, self.rank, self.world_size, self.rank)
+                        local_eval_batch = slice_and_move_batch_for_device(eval_batch, self.rank, self.world_size, self.gpu)
                         policy_samples, reference_samples = self.get_batch_samples(local_eval_batch)
 
                         all_policy_samples.extend(policy_samples)
@@ -394,8 +395,8 @@ class BasicTrainer(object):
             start_time = time.time()
             batch_metrics = defaultdict(list)
             for microbatch_idx in range(self.config.gradient_accumulation_steps):
-                global_microbatch = slice_and_move_batch_for_device(batch, microbatch_idx, self.config.gradient_accumulation_steps, self.rank)
-                local_microbatch = slice_and_move_batch_for_device(global_microbatch, self.rank, self.world_size, self.rank)
+                global_microbatch = slice_and_move_batch_for_device(batch, microbatch_idx, self.config.gradient_accumulation_steps, self.gpu)
+                local_microbatch = slice_and_move_batch_for_device(global_microbatch, self.rank, self.world_size, self.gpu)
                 loss, metrics = self.get_batch_metrics(local_microbatch, self.config.loss, train=True)
                 (loss / self.config.gradient_accumulation_steps).backward()
 
@@ -578,4 +579,3 @@ class TensorParallelTrainer(BasicTrainer):
     
         self.write_state_dict(self.example_counter, policy_state_dict, metrics, 'policy.pt', output_dir)
         del policy_state_dict
-        

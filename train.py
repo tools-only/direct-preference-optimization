@@ -79,8 +79,8 @@ def main(config: DictConfig):
     os.environ['XDG_CACHE_HOME'] = get_local_dir(config.local_dirs)
     print('building policy')
     # device = torch.device("cuda:1" if torch.cuda.is_available() and torch.cuda.device_count() > 1 else "cpu")
-    max_memory = {0:"80GiB"}
-    model_kwargs = {'device_map': 'auto', "max_memory": max_memory} if config.trainer == 'BasicTrainer' else {'device_map': 'auto', "max_memory": max_memory} #added device to model_kwargs
+    # max_memory = {0:"80GiB"}
+    model_kwargs = {'device_map': 'auto'} if config.trainer == 'BasicTrainer' else {} #added device to model_kwargs
     
     # model_kwargs = {'device_map': 'balanced'} if config.trainer == 'BasicTrainer' else {}
     policy_dtype = getattr(torch, config.model.policy_dtype)
