@@ -214,6 +214,8 @@ class BasicTrainer(object):
            We do this to avoid doing two forward passes, because it's faster for FSDP.
         """
         concatenated_batch = concatenated_inputs(batch)
+        model = model.to(f"cuda:{self.rank}")
+
         all_logits = model(concatenated_batch['concatenated_input_ids'], attention_mask=concatenated_batch['concatenated_attention_mask']).logits.to(torch.float32)
         all_logps = _get_batch_logps(all_logits, concatenated_batch['concatenated_labels'], average_log_prob=False)
         chosen_logps = all_logps[:batch['chosen_input_ids'].shape[0]]
@@ -522,7 +524,7 @@ class FSDPTrainer(BasicTrainer):
 
         if config.loss.name in {'dpo', 'ipo'}:
             rank0_print('Sharding reference model...')
-            self.reference_model = FSDP(reference_model, **shared_fsdp_kwargs)
+            self.reference_model = FSDP(reference_model, **shared_fsdp_kwargs).to(f'cuda:{rank}')
         
         print('Loaded model on rank', rank)
         dist.barrier()

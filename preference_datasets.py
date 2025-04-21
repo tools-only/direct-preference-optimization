@@ -42,11 +42,11 @@ def strip_html_tags(html_string):
 
     return text
 
-def get_weight_pp_reason(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+def get_weight_pp_all_reason(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
     """Load the Personalized Preference dataset, and return a dict of prompts and responses.
     """
     print(f'Loading PP dataset ({split} split) from Huggingface...')
-    train = datasets.load_dataset('tools-o/weight-prefer-reason', cache_dir=cache_dir)['train']
+    train = datasets.load_dataset('tools-o/all_pp_reason', cache_dir=cache_dir)['train']
     test = datasets.load_dataset('tools-o/weight-prefer', cache_dir=cache_dir)['test']
     print('done')
 
@@ -59,18 +59,14 @@ def get_weight_pp_reason(split, silent=False, cache_dir: str = None) -> Dict[str
     for row in tqdm.tqdm(dataset, desc='Processing SE', disable=silent):
         prompt = '\n\nHuman: ' + row['Question'] + '\n\nAssistant:'
 
-        responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
-
-        # if split == 'test':
-        #     # responses = ['A', 'B', 'C']
-        #     responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
-        # else:
-        #     if row[target] == 0:
-        #         responses = [row['A_with_reason'], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
-        #     elif row[target] == 1:
-        #         responses = [row['Question'].split('\n')[1], row['B_with_reason'], row['Question'].split('\n')[3]]
-        #     elif row[target] == 2:
-        #         responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['C_with_reason']]
+        if split == 'test':
+            responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+        else:
+            # constrative
+            if pd.isna(row['A_with_reason']):
+                responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+            else:
+                responses = [row['A_with_reason'], row['B_with_reason'], row['C_with_reason']]
 
         remaining = [0, 1, 2]  # 所有可能的数字
         if row[target] == 0:
@@ -100,6 +96,137 @@ def get_weight_pp_reason(split, silent=False, cache_dir: str = None) -> Dict[str
         data[prompt]['pairs'] = pairs
         data[prompt]['sft_target'] = sft
         data[prompt]['weight'] = row['weight']
+
+    return data
+
+def get_weight_pp_reason(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Personalized Preference dataset, and return a dict of prompts and responses.
+    """
+    print(f'Loading PP dataset ({split} split) from Huggingface...')
+    train = datasets.load_dataset('tools-o/weight-prefer-reason', cache_dir=cache_dir)['train']
+    test = datasets.load_dataset('tools-o/weight-prefer', cache_dir=cache_dir)['test']
+    print('done')
+
+    target = "gpt-4o-mini_role_2_answer"
+    # shuffle the dataset and select 1% for test
+    dataset = test if split == 'test' else train
+    dataset = dataset.shuffle(seed=42)
+
+    data = defaultdict(dict)
+    for row in tqdm.tqdm(dataset, desc='Processing SE', disable=silent):
+        prompt = '\n\nHuman: ' + row['Question'] + '\n\nAssistant:'
+
+        responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+
+
+        responses = ['A', 'B', 'C']
+        # if split == 'test':
+        #     # responses = ['A', 'B', 'C']
+        #     responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+        # else:
+        #     # constrative
+        #     responses = [row['A_with_reason'], row['B_with_reason'], row['C_with_reason']]
+    
+            # # only pos
+            # if row[target] == 0:
+            #     responses = [row['A_with_reason'], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+            # elif row[target] == 1:
+            #     responses = [row['Question'].split('\n')[1], row['B_with_reason'], row['Question'].split('\n')[3]]
+            # elif row[target] == 2:
+            #     responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['C_with_reason']]
+
+        remaining = [0, 1, 2]  # 所有可能的数字
+        if row[target] == 0:
+            pairs = [(0, 1), (0, 2)]
+            remaining.remove(0)  # 移除已使用的数字
+            # 剩下的数字是 [1, 2]，随机排列
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))  # 例如 (1, 2) 或 (2, 1)
+            sft = 'A'
+        elif row[target] == 1:
+            pairs = [(1, 0), (1, 2)]
+            remaining.remove(1)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'B'
+        elif row[target] == 2:
+            pairs = [(2, 0), (2, 1)]
+            remaining.remove(2)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'C'
+        else:
+            assert('invalid pairs!')
+            pairs = []  # 默认情况（可自定义）
+
+        data[prompt]['responses'] = responses
+        data[prompt]['pairs'] = pairs
+        data[prompt]['sft_target'] = sft
+        data[prompt]['weight'] = row['weight']
+
+    return data
+
+def get_pp_small(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str, Union[List[Tuple[int, int]], List[str], str]]]:
+    """Load the Personalized Preference dataset, and return a dict of prompts and responses.
+    """
+    print(f'Loading PP dataset ({split} split) from Huggingface...')
+    train = datasets.load_dataset('tools-o/weight-prefer-reason', cache_dir=cache_dir)['train']
+    test = datasets.load_dataset('tools-o/weight-prefer', cache_dir=cache_dir)['test']
+    print('done')
+
+    target = "gpt-4o-mini_role_2_answer"
+    # shuffle the dataset and select 1% for test
+    dataset = test if split == 'test' else train
+    dataset = dataset.shuffle(seed=42)
+
+    data = defaultdict(dict)
+    for row in tqdm.tqdm(dataset, desc='Processing SE', disable=silent):
+        prompt = '\n\nHuman: ' + row['Question'] + '\n\nAssistant:'
+
+        # responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+
+        if split == 'test':
+            # responses = ['A', 'B', 'C']
+            responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+        else:
+            # constrative
+            # responses = [row['A_with_reason'], row['B_with_reason'], row['C_with_reason']]
+            # # only pos
+            if row[target] == 0:
+                responses = [row['A_with_reason'], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
+            elif row[target] == 1:
+                responses = [row['Question'].split('\n')[1], row['B_with_reason'], row['Question'].split('\n')[3]]
+            elif row[target] == 2:
+                responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['C_with_reason']]
+
+        remaining = [0, 1, 2]  # 所有可能的数字
+        if row[target] == 0:
+            pairs = [(0, 1), (0, 2)]
+            remaining.remove(0)  # 移除已使用的数字
+            # 剩下的数字是 [1, 2]，随机排列
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))  # 例如 (1, 2) 或 (2, 1)
+            sft = 'A'
+        elif row[target] == 1:
+            pairs = [(1, 0), (1, 2)]
+            remaining.remove(1)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'B'
+        elif row[target] == 2:
+            pairs = [(2, 0), (2, 1)]
+            remaining.remove(2)
+            random.shuffle(remaining)
+            pairs.append(tuple(remaining))
+            sft = 'C'
+        else:
+            assert('invalid pairs!')
+            pairs = []  # 默认情况（可自定义）
+
+        data[prompt]['responses'] = responses
+        data[prompt]['pairs'] = pairs
+        data[prompt]['sft_target'] = sft
+        # data[prompt]['weight'] = row['weight']
 
     return data
 
@@ -216,19 +343,26 @@ def get_pp_all(split, silent=False, cache_dir: str = None) -> Dict[str, Dict[str
     """Load the Personalized Preference dataset, and return a dict of prompts and responses.
     """
     print(f'Loading PP dataset ({split} split) from Huggingface...')
-    dataset = datasets.load_dataset('tools-o/pp_all', cache_dir=cache_dir)['train']
+    train = datasets.load_dataset('tools-o/pp_all', cache_dir=cache_dir)['train']
+    test = datasets.load_dataset('tools-o/pp_all', cache_dir=cache_dir)['test']
     print('done')
 
     target = "gpt-4o-mini_role_2"
     # shuffle the dataset and select 1% for test
+    if split == 'test':
+        dataset = test
+    else:
+        dataset = train
     dataset = dataset.shuffle(seed=42)
-    dataset = dataset.select(range(int(len(dataset) * 0.2))) if split == 'test' else dataset.select(
-        range(int(len(dataset) * 0.2), len(dataset)))
+    # dataset = dataset.select(range(int(len(dataset) * 0.2))) if split == 'test' else dataset.select(
+    #     range(int(len(dataset) * 0.2), len(dataset)))
 
     data = defaultdict(dict)
     for row in tqdm.tqdm(dataset, desc='Processing SE', disable=silent):
         prompt = '\n\nHuman: ' + row['Question'] + '\n\nAssistant:'
-        responses = ['A', 'B', 'C']
+        # responses = ['A', 'B', 'C']
+
+        responses = [row['Question'].split('\n')[1], row['Question'].split('\n')[2], row['Question'].split('\n')[3]]
 
         remaining = [0, 1, 2]  # 所有可能的数字
         if 'A.' in row[target] or 'A' == row[target]:
@@ -439,11 +573,15 @@ def get_dataset(name: str, split: str, silent: bool = False, cache_dir: str = No
         data = get_weighted_pp(split, silent=silent, cache_dir=cache_dir)
     elif name == 'weight_pp_reason':
         data = get_weight_pp_reason(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'pp_small':
+        data = get_pp_small(split, silent=silent, cache_dir=cache_dir)
+    elif name == 'pp_all_reason':
+        data = get_weight_pp_all_reason(split, silent=silent, cache_dir=cache_dir)
     else:
         raise ValueError(f"Unknown dataset '{name}'")
 
-    assert set(list(data.values())[0].keys()) == {'responses', 'pairs', 'sft_target', 'weight'}, \
-        f"Unexpected keys in dataset: {list(list(data.values())[0].keys())}"
+    # assert set(list(data.values())[0].keys()) == {'responses', 'pairs', 'sft_target', 'weight'}, \
+    #     f"Unexpected keys in dataset: {list(list(data.values())[0].keys())}"
 
     return data
 
@@ -589,7 +727,7 @@ def get_batch_iterator(names: List[str],
         flat_data = []
         for name in names:
             truncation_mode = 'keep_end' if name == 'hh' else 'keep_start'
-            if name == 'weight_pp':
+            if 'weight_pp' in name:
                 for prompt, data in get_dataset(name, split, silent=silent, cache_dir=cache_dir).items():
                     flat_data.append((prompt, data['responses'], data['pairs'], data['sft_target'], data['weight'], truncation_mode))
             else:
