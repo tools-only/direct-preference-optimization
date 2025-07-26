@@ -272,7 +272,8 @@ class BasicTrainer(object):
 
         if loss_config.name == 'wdpo':
             weight = batch['weight']  # weight is a list
-
+            print(weight)
+            print(train_test)
             # Convert weight to a PyTorch tensor
             weight_tensor = torch.tensor(weight).to(losses.device) #Match dtype for compatibility
 
@@ -289,13 +290,34 @@ class BasicTrainer(object):
             # Calculate sums on GPU
             weighted_losses_sum = torch.sum(losses * weight_tensor)
             weight_sum = torch.sum(weight_tensor)
-            print("before: ", losses.mean())
+            print("before: ", losses.mean(), weight_sum)
             # Perform division on the GPU
             losses = weighted_losses_sum / weight_sum
-            print("after: ", losses.mean())
+            print("after: ", losses)
 
         else:
-            losses = losses.mean()
+            weight = batch['weight']  # weight is a list
+            print(weight)
+            # Convert weight to a PyTorch tensor
+            weight_tensor = torch.tensor(weight).to(losses.device) #Match dtype for compatibility
+
+            #Check if weight and losses are compatible
+            if len(weight) != losses.shape[0]: #Assuming losses is 1D or 2D and weight is 1D
+                raise ValueError("Length of weight list must match the first dimension of losses tensor.")
+            if weight_tensor.shape != losses.shape:
+                raise ValueError("Shapes of weight tensor and losses tensor must match for weighted averaging.")
+            if torch.any(weight_tensor < 0):
+                raise ValueError("Weights must be non-negative.")
+            if torch.sum(weight_tensor) == 0:
+                raise ValueError("Sum of weights must be greater than zero.")
+
+            # Calculate sums on GPU
+            weighted_losses_sum = torch.sum(losses * weight_tensor)
+            weight_sum = torch.sum(weight_tensor)
+            print("before: ", losses.mean(), weight_sum)
+            # Perform division on the GPU
+            losses = weighted_losses_sum / weight_sum
+            print("after: ", losses)
 
         return losses, metrics
 
@@ -318,13 +340,13 @@ class BasicTrainer(object):
         last_log = None
 
         # updated by zq, 25/4/14
-        if self.config.loss.name == 'sft':
-            policy_state_dict = self.policy.state_dict()
-            output_dir = os.path.join(self.run_dir, f'step-0')
-            self.write_state_dict(self.example_counter, policy_state_dict, None, 'policy.pt', output_dir)
-            del policy_state_dict
+        # if self.config.loss.name == 'sft':
+        #     policy_state_dict = self.policy.state_dict()
+        #     output_dir = os.path.join(self.run_dir, f'step-0')
+        #     self.write_state_dict(self.example_counter, policy_state_dict, None, 'policy.pt', output_dir)
+        #     del policy_state_dict
 
-            return
+        #     return
 
         for batch in self.train_iterator:
             #### BEGIN EVALUATION ####

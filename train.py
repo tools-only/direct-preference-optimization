@@ -27,6 +27,8 @@ def worker_main(rank: int, world_size: int, config: DictConfig, policy: nn.Modul
         wandb.init = lambda *args, **kwargs: None
         wandb.log = lambda *args, **kwargs: None
 
+    config.wandb.enabled = False
+
     if rank == 0 and config.wandb.enabled:
         os.environ['WANDB_CACHE_DIR'] = get_local_dir(config.local_dirs)
         wandb.init(
